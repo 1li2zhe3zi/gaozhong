@@ -1,75 +1,187 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>高中题库管理系统</title>
+    <title>高中题库系统</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
     <style>
-        /* 保持原有样式不变 */
-        .container { display: flex; height: 100vh; }
-        .directory-tree { width: 300px; background: #fff; padding: 20px; }
-        .question-area { flex: 1; padding: 20px; }
-        .modal { /* 弹窗样式 */ }
+        .tree-container { height: 80vh; overflow-y: auto; }
+        .question-card { margin-bottom: 15px; }
+        .question-image { max-width: 300px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="directory-tree" id="tree"></div>
-        <div class="question-area" id="questions">
-            <h2>题目列表</h2>
-            <div id="questionList"></div>
-        </div>
-        
-        <!-- 添加题目弹窗 -->
-        <div class="modal" id="questionModal">
-            <form id="questionForm" enctype="multipart/form-data">
-                <input type="text" name="content" placeholder="题目内容">
-                <textarea name="answer" placeholder="参考答案"></textarea>
-                <input type="file" name="image">
-                <button type="button" onclick="submitQuestion()">提交</button>
-            </form>
+    <div class="container-fluid mt-3">
+        <div class="row">
+            <!-- 左侧目录树 -->
+            <div class="col-md-4">
+                <div class="card tree-container">
+                    <div class="card-header">
+                        <h5>知识目录</h5>
+                    </div>
+                    <div class="card-body" id="treeView"></div>
+                </div>
+            </div>
+            
+            <!-- 右侧题目区 -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between">
+                        <h5 id="knowledgeTitle">请选择知识点</h5>
+                        <button class="btn btn-sm btn-primary" id="addQuestionBtn">添加题目</button>
+                    </div>
+                    <div class="card-body" id="questionArea"></div>
+                </div>
+            </div>
         </div>
     </div>
 
+    <!-- 添加题目模态框 -->
+    <div class="modal fade" id="questionModal">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加新题目</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="questionForm">
+                        <input type="hidden" id="knowledgeId">
+                        <div class="mb-3">
+                            <label class="form-label">题目内容</label>
+                            <textarea class="form-control" id="questionContent" required></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">参考答案</label>
+                            <textarea class="form-control" id="questionAnswer" required></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">题目图片</label>
+                            <input type="file" class="form-control" id="questionImage" accept="image/*">
+                            <img id="imagePreview" class="img-thumbnail mt-2 d-none" style="max-height: 200px;">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="saveQuestionBtn">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // 全局变量
+        let currentKnowledgeId = null;
+        const questionModal = new bootstrap.Modal('#questionModal');
+        
         // 初始化加载树结构
         fetch('/api/tree')
             .then(res => res.json())
-            .then(data => renderTree(data));
-
+            .then(renderTree);
+        
         // 渲染目录树
         function renderTree(data) {
-            const treeContainer = document.getElementById('tree');
-            // 树形结构渲染逻辑（同前）
-        }
-
-        // 提交题目
-        function submitQuestion() {
-            const formData = new FormData(document.getElementById('questionForm'));
+            const container = document.getElementById('treeView');
+            container.innerHTML = buildTreeHTML(data);
             
-            fetch('/api/questions', {
-                method: 'POST',
-                body: formData
-            }).then(() => {
-                loadQuestions(currentKnowledgeId);
-                hideModal();
+            // 添加点击事件
+            document.querySelectorAll('.tree-node').forEach(node => {
+                node.addEventListener('click', function() {
+                    const nodeId = this.dataset.id;
+                    const nodeType = this.dataset.type;
+                    
+                    if(nodeType === 'knowledge') {
+                        currentKnowledgeId = nodeId;
+                        document.getElementById('knowledgeId').value = nodeId;
+                        document.getElementById('knowledgeTitle').textContent = 
+                            this.querySelector('.node-name').textContent;
+                        document.getElementById('addQuestionBtn').disabled = false;
+                        loadQuestions(nodeId);
+                    }
+                });
             });
         }
-
+        
+        function buildTreeHTML(nodes, level = 0) {
+            let html = '<ul class="list-unstyled">';
+            nodes.forEach(node => {
+                html += `
+                    <li class="tree-node mb-1" data-id="${node.id}" data-type="${node.type}">
+                        <div class="d-flex align-items-center" style="padding-left: ${level * 20}px">
+                            <span class="me-2">${node.children ? '📁' : '📄'}</span>
+                            <span class="node-name">${node.name}</span>
+                            ${node.question_count ? `<span class="badge bg-secondary ms-2">${node.question_count}</span>` : ''}
+                        </div>
+                        ${node.children ? buildTreeHTML(node.children, level + 1) : ''}
+                    </li>
+                `;
+            });
+            return html + '</ul>';
+        }
+        
         // 加载题目
         function loadQuestions(knowledgeId) {
             fetch(`/api/questions?knowledge_id=${knowledgeId}`)
                 .then(res => res.json())
                 .then(questions => {
-                    const list = document.getElementById('questionList');
-                    list.innerHTML = questions.map(q => `
-                        <div class="question">
-                            <p>${q.content}</p>
-                            ${q.image_url ? `<img src="/uploads/${q.image_url}">` : ''}
-                            <div class="answer">答案：${q.answer}</div>
+                    const container = document.getElementById('questionArea');
+                    container.innerHTML = questions.map(q => `
+                        <div class="card question-card">
+                            <div class="card-body">
+                                <p class="card-text">${q.content}</p>
+                                ${q.image_url ? `<img src="/static/uploads/${q.image_url}" class="question-image img-fluid">` : ''}
+                                <div class="answer mt-2 p-2 bg-light rounded">
+                                    <strong>参考答案：</strong>${q.answer}
+                                </div>
+                            </div>
                         </div>
-                    `).join('');
+                    `).join('') || '<p>暂无题目</p>';
                 });
         }
+        
+        // 添加题目按钮事件
+        document.getElementById('addQuestionBtn').addEventListener('click', () => {
+            questionModal.show();
+        });
+        
+        // 图片预览
+        document.getElementById('questionImage').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if(file) {
+                const preview = document.getElementById('imagePreview');
+                preview.src = URL.createObjectURL(file);
+                preview.classList.remove('d-none');
+            }
+        });
+        
+        // 保存题目
+        document.getElementById('saveQuestionBtn').addEventListener('click', () => {
+            const formData = new FormData();
+            formData.append('knowledge_id', currentKnowledgeId);
+            formData.append('content', document.getElementById('questionContent').value);
+            formData.append('answer', document.getElementById('questionAnswer').value);
+            
+            const imageInput = document.getElementById('questionImage');
+            if(imageInput.files[0]) {
+                formData.append('image', imageInput.files[0]);
+            }
+            
+            fetch('/api/questions', {
+                method: 'POST',
+                body: formData
+            }).then(res => res.json())
+              .then(data => {
+                  if(data.success) {
+                      questionModal.hide();
+                      document.getElementById('questionForm').reset();
+                      document.getElementById('imagePreview').classList.add('d-none');
+                      loadQuestions(currentKnowledgeId);
+                      // 刷新树结构显示最新题目数
+                      fetch('/api/tree').then(res => res.json()).then(renderTree);
+                  }
+              });
+        });
     </script>
 </body>
 </html>
